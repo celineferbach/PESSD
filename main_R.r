@@ -77,24 +77,24 @@ panel_dm2[, vars] <- lapply(
   function(x) demean_twoway(x, id = panel$pays, time = panel$annee)
 )
 
+panel_dm2 <- pdata.frame(panel_dm2, index = c("pays", "annee"))
 colnames(panel_dm2)[colnames(panel_dm2) == "tx_deces_2ans"] <- "tx_deces"
 colnames(panel_dm2)[colnames(panel_dm2) == "part_65"] <- "vieil"
+panel_dm2 <- panel_dm2[c("dep_sante", "pib_ph", "vieil", "practiciens", "lits", "tx_deces")]
 
 # Définition du système d'équations simultanées ─────────────────────────
 # On essaie avec les variables endogènes suivantes : pib et part_65
 
 eq_dep_sante <- as.formula("dep_sante ~ vieil + pib_ph + practiciens + lits + tx_deces")
-eq_pib    <- as.formula("pib_ph ~ dep_sante + vieil + tx_deces")
-eq_vieil  <- as.formula("vieil ~ dep_sante + lits + practiciens")
+eq_pib    <- as.formula("pib_ph ~ dep_sante + vieil + practiciens + lits")
 
 system <- list(
   sante = eq_dep_sante,
-  pib    = eq_pib,
-  vieillissement  = eq_vieil
+  pib    = eq_pib
 )
 
 # Les instruments sont toutes les variables exogènes de l'ensemble du système
-instruments <- as.formula("~ lits + practiciens + tx_deces")
+instruments <- as.formula("~ vieil + lits + practiciens + tx_deces")
 
 # Estimation 3SLS
 model_3sls <- systemfit(
