@@ -3,10 +3,12 @@ install.packages("languageserver")
 install.packages("httpgd")
 install.packages("radian")
 install.packages(c("plm", "pdynmc"))
+install.packages("systemfit")
 
 #libraries
 library(plm)
 library(dplyr)
+library(systemfit)
 
 
 #chargement des données
@@ -54,3 +56,52 @@ bb_model <- pgmm(
 )
 
 summary(bb_model, robust = TRUE)
+
+
+
+######################################## 3SLS ###########################################
+
+# Déméanisation two-way (individus + années)
+demean_twoway <- function(x, id, time) {
+  grand_mean  <- mean(x, na.rm = TRUE)
+  mean_id     <- ave(x, id,   FUN = function(z) mean(z, na.rm = TRUE))
+  mean_time   <- ave(x, time, FUN = function(z) mean(z, na.rm = TRUE))
+  x - mean_id - mean_time + grand_mean
+}
+
+vars <- c("dep_sante", "pib_ph", "part_65", "practiciens", "lits", "tx_deces_2ans")
+
+panel_dm2 <- panel
+panel_dm2[, vars] <- lapply(
+  panel[, vars],
+  function(x) demean_twoway(x, id = panel$pays, time = panel$annee)
+)
+
+colnames(panel_dm2)[colnames(panel_dm2) == "tx_deces_2ans"] <- "tx_deces"
+colnames(panel_dm2)[colnames(panel_dm2) == "part_65"] <- "vieil"
+
+# Définition du système d'équations simultanées ─────────────────────────
+# On essaie avec les variables endogènes suivantes : pib et part_65
+
+eq_dep_sante <- as.formula("dep_sante ~ vieil + pib_ph + practiciens + lits + tx_deces")
+eq_pib    <- as.formula("pib_ph ~ dep_sante + vieil + tx_deces")
+eq_vieil  <- as.formula("vieil ~ dep_sante + lits + practiciens")
+
+system <- list(
+  sante = eq_dep_sante,
+  pib    = eq_pib,
+  vieillissement  = eq_vieil
+)
+
+# Les instruments sont toutes les variables exogènes de l'ensemble du système
+instruments <- as.formula("~ lits + practiciens + tx_deces")
+
+# Estimation 3SLS
+model_3sls <- systemfit(
+  system,
+  method = "3SLS",
+  inst   = instruments,
+  data   = panel_dm2
+)
+
+summary(model_3sls)
