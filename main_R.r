@@ -13,17 +13,20 @@ library(systemfit)
 
 #chargement des données
 panel <- read.csv("panelV2.csv", sep=",")
-head(panel)   # voir les premières lignes
+panel <- subset(panel, select = -c("Chomage", "Depenses.t.1"))
+head(panel)
 
 
 ################################################## Régression ##################################################################
 
 #on renomme les colonnes pour plus de clarté
-colnames(panel) <- c("pays", "annee", "dep_sante", "pib_ph", "part_65",
-                  "practiciens", "lits", "tx_deces_2ans", "dep_sante_lag")
+colnames(panel) <- c("index", "pays", "annee", "dep_sante", "pib_ph", "part_65",
+                  "practiciens", "lits", "tx_deces_2ans", "chomage", "dep_sante_lag")
 
 #déclarer la structure en panel des données
 panel <- pdata.frame(panel, index = c("pays", "annee"))
+panel <- subset(panel, select = -c(index, chomage, dep_sante_lag))
+head(panel)
 
 
 # Estimation Blundell-Bond (System GMM) avec pgmm()
@@ -34,29 +37,30 @@ panel <- pdata.frame(panel, index = c("pays", "annee"))
 #   (transformation = "d" seul = Arellano-Bond / difference GMM uniquement)
 
 bb_model <- pgmm(
-  dep_sante ~ plm::lag(dep_sante, 1) + plm::lag(dep_sante, 2)    # dynamique
-             + part_65             # exogène (structure démographique, peu endogène)
-             + pib_ph              # endogène (corrélation bidirectionnelle avec santé)
-             + practiciens         # endogène (l'offre répond aux dépenses)
-             + lits                # endogène (idem)
-             + tx_deces_2ans     # endogène (causalité inverse possible)
+  dep_sante ~ plm::lag(dep_sante, 1)
+             + part_65          # exogène
+             + pib_ph           # endogène
+             + practiciens      # exogène (hypothèse nouvelle)
+             + lits             # exogène (hypothèse nouvelle)
+             + tx_deces_2ans    # endogène (hypothèse nouvelle)
 
-             # ── Instruments ──────────────────────────────────────────────
-             | lag(dep_sante, 3:4)  # instr. pour la dépendante retardée
-             + lag(pib_ph, 2:3)      # instr. pour gdp_pc (endogène)
-             + lag(practiciens, 2:3)  # instr. pour physicians (endogène)
-             + lag(lits, 2:3)        # instr. pour beds (endogène)
-             + tx_deces_2ans        # exogene ?
-             + part_65,             # exogène → instrument pour elle-même (niveau)
+             | lag(dep_sante, 2:3)   # instruments pour le lag de dep_sante
+             + lag(pib_ph, 2:3)      # instruments pour pib_ph (endogène)
+             + lag(tx_deces_2ans, 2:3) # instruments pour tx_deces_2ans (endogène)
+             + practiciens           # exogène → instrument pour lui-même
+             + lits                  # exogène → instrument pour lui-même
+             + part_65,              # exogène → instrument pour lui-même
 
   data           = panel,
   effect         = "individual",
-  model          = "onestep",
+  model          = "twosteps",
   transformation = "ld",
   collapse = TRUE
 )
 
 summary(bb_model, robust = TRUE)
+
+
 
 #Vérification de la stationnarité de dep_sante
 
@@ -65,6 +69,64 @@ purtest(panel$dep_sante, test = "madwu", exo = "intercept", lags = 1)
 
 # Ou test IPS
 purtest(panel$dep_sante, test = "ips", exo = "intercept", lags = "AIC")
+
+
+
+################################################ Avec des logs ? #########################################################
+
+# Créer les variables log dans le data.frame AVANT pdata.frame
+panel_raw <- read.csv("panelV2.csv", sep = ",")
+colnames(panel_raw) <- c("index", "pays", "annee", "dep_sante", "pib_ph", "part_65",
+                  "practiciens", "lits", "tx_deces_2ans", "chomage", "dep_sante_lag")
+
+panel_raw <- pdata.frame(panel, index = c("pays", "annee"))
+panel_raw <- subset(panel, select = -c(index, chomage, dep_sante_lag))
+head(panel_raw)
+
+panel_log <- panel_raw %>%
+  mutate(
+    log_dep_sante  = log(dep_sante),
+    log_pib_ph     = log(pib_ph),
+    log_practiciens = log(practiciens),
+    log_lits       = log(lits),
+    log_part_65    = log(part_65)   # optionnel
+  )
+
+
+# Modèle en log
+bb_model_log <- pgmm(
+  log_dep_sante ~ plm::lag(log_dep_sante, 1)
+                + log_part_65
+                + log_pib_ph
+                + log_practiciens      # exogène
+                + log_lits             # exogène
+                + tx_deces_2ans        # endogène, pas logifié
+
+                | plm::lag(log_dep_sante, 2:3)
+                + plm::lag(log_pib_ph, 2:3)
+                + plm::lag(tx_deces_2ans, 2:3)
+                + log_practiciens
+                + log_lits
+                + log_part_65,
+
+  data           = panel_log,
+  effect         = "twoways",
+  model          = "twosteps",
+  transformation = "ld",
+  collapse       = TRUE
+)
+
+summary(bb_model_log, robust = TRUE)
+
+
+
+
+
+
+
+
+
+
 
 
 
