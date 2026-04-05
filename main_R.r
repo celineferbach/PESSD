@@ -34,7 +34,7 @@ panel <- pdata.frame(panel, index = c("pays", "annee"))
 #   (transformation = "d" seul = Arellano-Bond / difference GMM uniquement)
 
 bb_model <- pgmm(
-  dep_sante ~ lag(dep_sante, 1)    # dynamique
+  dep_sante ~ plm::lag(dep_sante, 1) + plm::lag(dep_sante, 2)    # dynamique
              + part_65             # exogène (structure démographique, peu endogène)
              + pib_ph              # endogène (corrélation bidirectionnelle avec santé)
              + practiciens         # endogène (l'offre répond aux dépenses)
@@ -42,20 +42,30 @@ bb_model <- pgmm(
              + tx_deces_2ans     # endogène (causalité inverse possible)
 
              # ── Instruments ──────────────────────────────────────────────
-             | lag(dep_sante, 2:4)  # instr. pour la dépendante retardée
-             + lag(pib_ph, 2:4)      # instr. pour gdp_pc (endogène)
-             + lag(practiciens, 2:4)  # instr. pour physicians (endogène)
-             + lag(lits, 2:4)        # instr. pour beds (endogène)
+             | lag(dep_sante, 3:4)  # instr. pour la dépendante retardée
+             + lag(pib_ph, 2:3)      # instr. pour gdp_pc (endogène)
+             + lag(practiciens, 2:3)  # instr. pour physicians (endogène)
+             + lag(lits, 2:3)        # instr. pour beds (endogène)
              + tx_deces_2ans        # exogene ?
              + part_65,             # exogène → instrument pour elle-même (niveau)
 
   data           = panel,
   effect         = "individual",
-  model          = "twosteps",
-  transformation = "ld"
+  model          = "onestep",
+  transformation = "ld",
+  collapse = TRUE
 )
 
 summary(bb_model, robust = TRUE)
+
+#Vérification de la stationnarité de dep_sante
+
+# Test de Fisher (combine des ADF individuels sur chaque pays)
+purtest(panel$dep_sante, test = "madwu", exo = "intercept", lags = 1)
+
+# Ou test IPS
+purtest(panel$dep_sante, test = "ips", exo = "intercept", lags = "AIC")
+
 
 
 
