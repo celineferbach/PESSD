@@ -24,7 +24,7 @@ colnames(panel) <- c("pays", "annee", "dep_sante", "pib_ph", "part_65",
 
 #déclarer la structure en panel des données
 panel <- pdata.frame(panel, index = c("pays", "annee"))
-panel <- subset(panel, select = -c(pays, annee, chomage, dep_sante_lag))
+panel <- subset(panel, select = -c(pays, annee, dep_sante_lag))
 head(panel)
 
 
@@ -39,15 +39,13 @@ bb_model <- pgmm(
   dep_sante ~ plm::lag(dep_sante, 1)
              + part_65          # exogène
              + pib_ph           # endogène
-             + practiciens      # exogène (hypothèse nouvelle)
-             + lits             # exogène (hypothèse nouvelle)
+             + chomage          # exogène
              + tx_deces_2ans    # endogène (hypothèse nouvelle)
 
              | lag(dep_sante, 2:3)   # instruments pour le lag de dep_sante
              + lag(pib_ph, 2:3)      # instruments pour pib_ph (endogène)
              + lag(tx_deces_2ans, 2:3) # instruments pour tx_deces_2ans (endogène)
-             + practiciens           # exogène → instrument pour lui-même
-             + lits                  # exogène → instrument pour lui-même
+             + chomage               # exogène → instrument pour lui-même
              + part_65,              # exogène → instrument pour lui-même
 
   data           = panel,
@@ -99,29 +97,26 @@ purtest(panel[, "log_part_65"], test = "madwu", exo = "intercept", lags = 1)
 panel <- panel %>%
   mutate(
     log_dep_sante   = log(dep_sante),
-    #log_practiciens = log(practiciens),
+    log_chomage = log(chomage),
     #log_lits        = log(lits),
     d_pib_ph        = c(NA, diff(pib_ph)),
     d_part_65       = c(NA, diff(part_65))
   )
 
-panel <- subset(panel, select = c("log_dep_sante", "practiciens", "lits", "d_pib_ph", "d_part_65", "tx_deces_2ans"))
+panel <- subset(panel, select = c("log_dep_sante", "log_chomage", "d_pib_ph", "d_part_65", "tx_deces_2ans"))
 
 bb_model_v5 <- pgmm(
   log_dep_sante ~ plm::lag(log_dep_sante, 1)
-                + plm::lag(log_dep_sante, 2)
                 + d_part_65             # différence première, exogène
                 + d_pib_ph              # différence première, endogène
-                + practiciens       # exogène
-                + lits              # exogène
+                + log_chomage           # exogène
                 + tx_deces_2ans         # endogène, stationnaire
 
                 | plm::lag(log_dep_sante, 3:5)
                 + plm::lag(d_pib_ph, 2:3)       # instruments pour d_pib_ph
                 + plm::lag(tx_deces_2ans, 2:3)  # instruments pour tx_deces_2ans
-                + d_part_65                     # exogène → instrument pour elle-même
-                + practiciens               # exogène → instrument pour lui-même
-                + lits,                     # exogène → instrument pour lui-même
+                + log_chomage
+                + d_part_65,                     # exogène → instrument pour elle-même
 
   data           = panel,
   effect         = "individual",
