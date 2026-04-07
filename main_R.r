@@ -13,7 +13,6 @@ library(systemfit)
 
 #chargement des données
 panel <- read.csv("panelV2.csv", sep=",")
-panel <- subset(panel, select = -c("Chomage", "Depenses.t.1"))
 head(panel)
 
 
@@ -68,7 +67,69 @@ summary(bb_model, robust = TRUE)
 purtest(panel$dep_sante, test = "madwu", exo = "intercept", lags = 1)
 
 # Ou test IPS
-purtest(panel$dep_sante, test = "ips", exo = "intercept", lags = "AIC")
+purtest(panel$dep_sante, test = "ips", exo = "intercept", lags = 1)
+
+purtest(panel[, "pib_ph"],       test = "madwu", exo = "intercept", lags = 1)
+purtest(panel[, "part_65"],      test = "madwu", exo = "intercept", lags = 1)
+purtest(panel[, "tx_deces_2ans"], test = "madwu", exo = "intercept", lags = 1)
+
+panel <- panel %>%
+  mutate(
+    log_pib_ph  = log(pib_ph),      # option 1 : log (souvent suffit à stationnariser)
+    d_pib_ph    = c(NA, diff(pib_ph)) # option 2 : différence première
+  )
+
+# Vérifier si le log stationnarise
+purtest(panel[, "log_pib_ph"], test = "madwu", exo = "intercept", lags = 1)
+purtest(panel[, "d_pib_ph"], test = "madwu", exo = "intercept", lags = 1)
+
+panel <- panel %>%
+  mutate(
+    # Option 1 : différence première (taux de vieillissement annuel)
+    d_part_65 = c(NA, diff(part_65)),
+    
+    # Option 2 : log
+    log_part_65 = log(part_65)
+  )
+
+purtest(panel[, "d_part_65"],   test = "madwu", exo = "intercept", lags = 1)
+purtest(panel[, "log_part_65"], test = "madwu", exo = "intercept", lags = 1)
+
+
+panel <- panel %>%
+  mutate(
+    log_dep_sante   = log(dep_sante),
+    log_practiciens = log(practiciens),
+    log_lits        = log(lits),
+    d_pib_ph        = c(NA, diff(pib_ph)),
+    d_part_65       = c(NA, diff(part_65))
+  )
+
+panel <- subset(panel, select = c("log_dep_sante", "log_practiciens", "log_lits", "d_pib_ph", "d_part_65", "tx_deces_2ans"))
+
+bb_model_v5 <- pgmm(
+  log_dep_sante ~ plm::lag(log_dep_sante, 1)
+                + d_part_65             # différence première, exogène
+                + d_pib_ph              # différence première, endogène
+                + log_practiciens       # exogène
+                + log_lits              # exogène
+                + tx_deces_2ans         # endogène, stationnaire
+
+                | plm::lag(log_dep_sante, 2:3)
+                + plm::lag(d_pib_ph, 2:3)       # instruments pour d_pib_ph
+                + plm::lag(tx_deces_2ans, 2:3)  # instruments pour tx_deces_2ans
+                + d_part_65                     # exogène → instrument pour elle-même
+                + log_practiciens               # exogène → instrument pour lui-même
+                + log_lits,                     # exogène → instrument pour lui-même
+
+  data           = panel,
+  effect         = "twoways",
+  model          = "twosteps",
+  transformation = "ld",
+  collapse       = TRUE
+)
+
+summary(bb_model_v5, robust = TRUE)
 
 
 
