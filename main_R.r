@@ -19,12 +19,12 @@ head(panel)
 ################################################## Régression ##################################################################
 
 #on renomme les colonnes pour plus de clarté
-colnames(panel) <- c("index", "pays", "annee", "dep_sante", "pib_ph", "part_65",
+colnames(panel) <- c("pays", "annee", "dep_sante", "pib_ph", "part_65",
                   "practiciens", "lits", "tx_deces_2ans", "chomage", "dep_sante_lag")
 
 #déclarer la structure en panel des données
 panel <- pdata.frame(panel, index = c("pays", "annee"))
-panel <- subset(panel, select = -c(index, chomage, dep_sante_lag))
+panel <- subset(panel, select = -c(pays, annee, chomage, dep_sante_lag))
 head(panel)
 
 
@@ -99,37 +99,67 @@ purtest(panel[, "log_part_65"], test = "madwu", exo = "intercept", lags = 1)
 panel <- panel %>%
   mutate(
     log_dep_sante   = log(dep_sante),
-    log_practiciens = log(practiciens),
-    log_lits        = log(lits),
+    #log_practiciens = log(practiciens),
+    #log_lits        = log(lits),
     d_pib_ph        = c(NA, diff(pib_ph)),
     d_part_65       = c(NA, diff(part_65))
   )
 
-panel <- subset(panel, select = c("log_dep_sante", "log_practiciens", "log_lits", "d_pib_ph", "d_part_65", "tx_deces_2ans"))
+panel <- subset(panel, select = c("log_dep_sante", "practiciens", "lits", "d_pib_ph", "d_part_65", "tx_deces_2ans"))
 
 bb_model_v5 <- pgmm(
   log_dep_sante ~ plm::lag(log_dep_sante, 1)
+                + plm::lag(log_dep_sante, 2)
                 + d_part_65             # différence première, exogène
                 + d_pib_ph              # différence première, endogène
-                + log_practiciens       # exogène
-                + log_lits              # exogène
+                + practiciens       # exogène
+                + lits              # exogène
                 + tx_deces_2ans         # endogène, stationnaire
 
-                | plm::lag(log_dep_sante, 2:3)
+                | plm::lag(log_dep_sante, 3:5)
                 + plm::lag(d_pib_ph, 2:3)       # instruments pour d_pib_ph
                 + plm::lag(tx_deces_2ans, 2:3)  # instruments pour tx_deces_2ans
                 + d_part_65                     # exogène → instrument pour elle-même
-                + log_practiciens               # exogène → instrument pour lui-même
-                + log_lits,                     # exogène → instrument pour lui-même
+                + practiciens               # exogène → instrument pour lui-même
+                + lits,                     # exogène → instrument pour lui-même
 
   data           = panel,
-  effect         = "twoways",
+  effect         = "individual",
   model          = "twosteps",
   transformation = "ld",
   collapse       = TRUE
 )
 
 summary(bb_model_v5, robust = TRUE)
+
+
+################################################# Arellano-Bond #####################################
+
+# Passer transformation = "d" au lieu de "ld"
+# Moins efficace mais plus conservateur
+ab_model <- pgmm(
+  log_dep_sante ~ plm::lag(log_dep_sante, 1)
+                + d_part_65
+                + d_pib_ph
+                + practiciens
+                + lits
+                + tx_deces_2ans
+
+                | plm::lag(log_dep_sante, 2:3)
+                + plm::lag(d_pib_ph, 2:3)
+                + plm::lag(tx_deces_2ans, 2:3)
+                + d_part_65
+                + practiciens
+                + lits,
+
+  data           = panel,
+  effect         = "individual",
+  model          = "twosteps",
+  transformation = "d",   # ← difference GMM uniquement
+  collapse       = TRUE
+)
+
+summary(ab_model, robust = TRUE)
 
 
 
