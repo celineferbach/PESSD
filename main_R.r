@@ -36,17 +36,21 @@ head(panel)
 #   (transformation = "d" seul = Arellano-Bond / difference GMM uniquement)
 
 bb_model <- pgmm(
-  dep_sante ~ plm::lag(dep_sante, 1)
+  dep_sante ~ plm::lag(dep_sante, 1) + plm::lag(dep_sante, 2) + plm::lag(dep_sante, 3)
              + part_65          # exogène
              + pib_ph           # endogène
              + chomage          # exogène
+             + lits
+             + practiciens
              + tx_deces_2ans    # endogène (hypothèse nouvelle)
 
-             | lag(dep_sante, 2:3)   # instruments pour le lag de dep_sante
-             + lag(pib_ph, 2:3)      # instruments pour pib_ph (endogène)
-             + lag(tx_deces_2ans, 2:3) # instruments pour tx_deces_2ans (endogène)
-             + chomage               # exogène → instrument pour lui-même
-             + part_65,              # exogène → instrument pour lui-même
+             | lag(dep_sante, 4:5)     # instruments pour le lag de dep_sante
+             + lag(pib_ph, 4:5)        # instruments pour pib_ph (endogène)
+             + lag(tx_deces_2ans, 4:5) # instruments pour tx_deces_2ans (endogène)
+             + lag(lits, 4:5)
+             + lag(practiciens, 4:5)
+             + chomage                 # exogène → instrument pour lui-même
+             + part_65,                # exogène → instrument pour lui-même
 
   data           = panel,
   effect         = "individual",
@@ -55,7 +59,19 @@ bb_model <- pgmm(
   collapse = TRUE
 )
 
-summary(bb_model, robust = TRUE)
+summary(bb_model, robust = TRUE, order = 3)
+
+# Calculer les tests AR(1), AR(2), AR(3) et AR(4) manuellement
+ar1 <- mtest(bb_model, order = 1)
+ar2 <- mtest(bb_model, order = 2)
+ar3 <- mtest(bb_model, order = 3)
+ar4 <- mtest(bb_model, order = 4)
+
+# Afficher les résultats
+print(ar1)
+print(ar2)
+print(ar3)
+print(ar4)
 
 
 
