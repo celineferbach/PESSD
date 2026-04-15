@@ -47,8 +47,8 @@ bb_model <- pgmm(
              | lag(dep_sante, 4:5)     # instruments pour le lag de dep_sante
              + lag(pib_ph, 4:5)        # instruments pour pib_ph (endogène)
              + lag(tx_deces_2ans, 4:5) # instruments pour tx_deces_2ans (endogène)
-             + lag(lits, 4:5)
-             + lag(practiciens, 4:5)
+             + lits
+             + practiciens
              + chomage                 # exogène → instrument pour lui-même
              + part_65,                # exogène → instrument pour lui-même
 
@@ -59,7 +59,7 @@ bb_model <- pgmm(
   collapse = TRUE
 )
 
-summary(bb_model, robust = TRUE, order = 3)
+summary(bb_model, robust = TRUE)
 
 # Calculer les tests AR(1), AR(2), AR(3) et AR(4) manuellement
 ar1 <- mtest(bb_model, order = 1)
