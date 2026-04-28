@@ -20,7 +20,7 @@ head(panel)
 
 #on renomme les colonnes pour plus de clarté
 colnames(panel) <- c("pays", "annee", "dep_sante", "pib_ph", "part_65",
-                  "practiciens", "lits", "tx_deces_2ans", "chomage", "dep_sante_lag")
+                  "tx_deces_2ans", "chomage", "dep_sante_lag")
 
 #déclarer la structure en panel des données
 panel <- pdata.frame(panel, index = c("pays", "annee"))
@@ -40,15 +40,11 @@ bb_model <- pgmm(
              + part_65          # exogène
              + pib_ph           # endogène
              + chomage          # exogène
-             + lits
-             + practiciens
              + tx_deces_2ans    # endogène (hypothèse nouvelle)
 
              | lag(dep_sante, 4:5)     # instruments pour le lag de dep_sante
              + lag(pib_ph, 4:5)        # instruments pour pib_ph (endogène)
              + lag(tx_deces_2ans, 4:5) # instruments pour tx_deces_2ans (endogène)
-             + lits
-             + practiciens
              + chomage                 # exogène → instrument pour lui-même
              + part_65,                # exogène → instrument pour lui-même
 
