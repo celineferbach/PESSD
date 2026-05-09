@@ -1,4 +1,4 @@
-Country,Year,Depenses de sante en % du PIB,PIB par habitant,Part des +65 ans,Practiciens pour 1000 habitants,Lits d hopitaux pour 1000 habitants,Taux deces 2 ans,Chomage,Depenses t-1
+Country,Year,Depenses de sante en % du PIB,PIB par habitant,Part des +65 ans,Practiciens pour 1000 hab,Lits pour 1000 hab,Taux deces 2 ans,Chomage,Depenses t-1
 Allemagne,2005,10.107,129.3,0.1862702164434696,3.4,6.26,2.002,11.2,9.975
 Allemagne,2006,9.962,128.1,0.1925092185951393,3.44,6.13,2.0,10.3,10.107
 Allemagne,2007,9.835,127.2,0.1980113905493617,3.49,5.57,2.031,8.7,9.962
