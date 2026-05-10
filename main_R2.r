@@ -1,17 +1,21 @@
-# ── Librairies ────────────────────────────────────────────────────────────────
+#install packages
+install.packages("languageserver")
+install.packages("httpgd")
+install.packages("radian")
+install.packages(c("plm", "pdynmc"))
+install.packages("systemfit")
+
+#libraries
 library(plm)
 library(dplyr)
 library(systemfit)
 
 
-# ── Chargement des données ────────────────────────────────────────────────────
-# panelV2.csv est généré par main.ipynb (cellule d'export)
-# Colonnes : Country, Year, dep_sante, pib_ph, part_65,
-#            practiciens, lits, tx_deces_2ans, chomage, dep_sante_lag
+#chargement des données 
 panel <- read.csv("panelV2.csv", sep = ",")
 head(panel)
 
-# Renommer pour plus de clarté
+#on renomme pour plus de clarté
 colnames(panel) <- c("pays", "annee", "dep_sante", "pib_ph", "part_65",
                      "practiciens", "lits", "tx_deces_2ans", "chomage", "dep_sante_lag")
 
@@ -22,9 +26,13 @@ head(panel)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 1. Blundell-Bond (System GMM) — modèle de base
+# Blundell-Bond (System GMM) 
 # ══════════════════════════════════════════════════════════════════════════════
-# transformation = "ld" → level and difference = System GMM (Blundell-Bond)
+# pgmm() implémente Arellano-Bond (difference GMM) ET Blundell-Bond (system GMM)
+# - "DPD" = dynamic panel data
+# - effect = "individual" pour les effets fixes individuels
+# - transformation = "ld" → "level and difference" = System GMM (Blundell-Bond)
+#   (transformation = "d" seul = Arellano-Bond / difference GMM uniquement)
 
 bb_model <- pgmm(
   dep_sante ~ plm::lag(dep_sante, 1) + plm::lag(dep_sante, 2) + plm::lag(dep_sante, 3)
@@ -33,11 +41,11 @@ bb_model <- pgmm(
             + chomage        # exogène
             + tx_deces_2ans  # endogène
 
-            | lag(dep_sante, 4:5)
-            + lag(pib_ph, 4:5)
-            + lag(tx_deces_2ans, 4:5)
-            + chomage
-            + part_65,
+             | lag(dep_sante, 4:5)     # instruments pour le lag de dep_sante
+             + lag(pib_ph, 4:5)        # instruments pour pib_ph (endogène)
+             + lag(tx_deces_2ans, 4:5) # instruments pour tx_deces_2ans (endogène)
+             + chomage                 # exogène → instrument pour lui-même
+             + part_65,                # exogène → instrument pour lui-même
 
   data           = panel,
   effect         = "individual",
@@ -55,11 +63,13 @@ ar3 <- mtest(bb_model, order = 3); print(ar3)
 ar4 <- mtest(bb_model, order = 4); print(ar4)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 2. Tests de stationnarité
-# ══════════════════════════════════════════════════════════════════════════════
 
+#Tests de stationnarité
+
+# Test de Fisher (combine des ADF individuels sur chaque pays)
 purtest(panel$dep_sante,    test = "madwu", exo = "intercept", lags = 1)
+
+
 purtest(panel$dep_sante,    test = "ips",   exo = "intercept", lags = 1)
 purtest(panel[, "pib_ph"],       test = "madwu", exo = "intercept", lags = 1)
 purtest(panel[, "part_65"],      test = "madwu", exo = "intercept", lags = 1)
@@ -72,16 +82,12 @@ panel <- panel %>%
     d_part_65   = c(NA, diff(part_65)),
     log_part_65 = log(part_65)
   )
-
+# Vérifier si le log stationnarise
 purtest(panel[, "log_pib_ph"],  test = "madwu", exo = "intercept", lags = 1)
 purtest(panel[, "d_pib_ph"],    test = "madwu", exo = "intercept", lags = 1)
 purtest(panel[, "d_part_65"],   test = "madwu", exo = "intercept", lags = 1)
 purtest(panel[, "log_part_65"], test = "madwu", exo = "intercept", lags = 1)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 3. Blundell-Bond v5 — variables transformées (logs + différences premières)
-# ══════════════════════════════════════════════════════════════════════════════
 
 panel <- panel %>%
   mutate(
@@ -118,9 +124,10 @@ summary(bb_model_v5, robust = TRUE)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. Arellano-Bond (Difference GMM)
+# Arellano-Bond (Difference GMM)
 # ══════════════════════════════════════════════════════════════════════════════
-
+# Passer transformation = "d" au lieu de "ld"
+# Moins efficace mais plus conservateur
 ab_model <- pgmm(
   log_dep_sante ~ plm::lag(log_dep_sante, 1)
                 + d_part_65
@@ -142,9 +149,7 @@ ab_model <- pgmm(
 summary(ab_model, robust = TRUE)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 5. Blundell-Bond en logs complets (avec practiciens et lits)
-# ══════════════════════════════════════════════════════════════════════════════
+# Avec des logs ? 
 
 # Recharger panel complet avec practiciens et lits
 panel_full <- read.csv("panelV2.csv", sep = ",")
@@ -166,9 +171,9 @@ bb_model_log <- pgmm(
   log_dep_sante ~ plm::lag(log_dep_sante, 1)
                 + log_part_65
                 + log_pib_ph
-                + log_practiciens
-                + log_lits
-                + tx_deces_2ans
+                + log_practiciens      # exogène
+                + log_lits             # exogène
+                + tx_deces_2ans        # endogène, pas logifié
 
                 | plm::lag(log_dep_sante, 2:3)
                 + plm::lag(log_pib_ph, 2:3)
@@ -188,7 +193,7 @@ summary(bb_model_log, robust = TRUE)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 6. 3SLS — système d'équations simultanées
+# 3SLS
 # ══════════════════════════════════════════════════════════════════════════════
 
 demean_twoway <- function(x, id, time) {
@@ -212,12 +217,16 @@ panel_dm2 <- panel_dm2[c("dep_sante", "pib_ph", "part_65",
 colnames(panel_dm2)[colnames(panel_dm2) == "tx_deces_2ans"] <- "tx_deces"
 colnames(panel_dm2)[colnames(panel_dm2) == "part_65"]       <- "vieil"
 
+# Définition du système d'équations simultanées 
+# On essaie avec les variables endogènes suivantes : pib et part_65
 eq_dep_sante <- as.formula("dep_sante ~ vieil + pib_ph + practiciens + lits + tx_deces")
 eq_pib       <- as.formula("pib_ph ~ dep_sante + vieil + practiciens + lits")
 
 system_eq <- list(sante = eq_dep_sante, pib = eq_pib)
+# Les instruments sont toutes les variables exogènes de l'ensemble du système
 instruments <- as.formula("~ vieil + lits + practiciens + tx_deces")
 
+# Estimation 3SLS
 model_3sls <- systemfit(
   system_eq,
   method = "3SLS",
