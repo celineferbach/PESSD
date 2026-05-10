@@ -1,6 +1,3 @@
-# ── Packages ──────────────────────────────────────────────────────────────────
-# install.packages(c("plm", "pdynmc", "systemfit", "dplyr"))  # décommenter si besoin
-
 # ── Librairies ────────────────────────────────────────────────────────────────
 library(plm)
 library(dplyr)
